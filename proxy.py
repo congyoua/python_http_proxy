@@ -21,7 +21,9 @@ class ProxyServer:
         self.forward.close()
 
     def fwd(self):
-        self.listening()
+        try:
+            self.listening()
+        except:pass
         header, url = self.get_header()
         self.connect()
         print('connection created')
