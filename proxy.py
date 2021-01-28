@@ -5,51 +5,57 @@ class ProxyServer:
     def __init__(self, addr):
         self.listen = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.listen.bind(addr)
-        self.listen.listen(3)
-        self.client = self.forward = self.url =None
+        self.listen.listen(5)
+        self.client = None
 
     def listening(self):
         self.client, addr = self.listen.accept()
         print('listening to {} with {}'.format(self.client, addr))
 
-    def connect(self):
-        self.forward = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.forward.connect((self.url, 80))
+    def connect(self, forward):
+        while True:
+            try:
+                request = self.client.recv(8192)
+                break
+            except:pass
+        header, website = self.modify_request(request)
+        forward.connect((website, 80))
+        forward.sendall(header)
+        data_rec = self.recvall(forward)
+        self.client.sendall(data_rec)
 
     def disconnect_all(self):
         self.listen.close()
-        self.forward.close()
 
     def fwd(self):
-        try:
-            self.listening()
-        except:pass
-        header, url = self.get_header()
-        self.connect()
-        print('connection created')
-        self.forward.sendall(header.encode())
-        data_rec = self.recvall(self.forward)
-        print(data_rec)
-        self.client.sendall(data_rec)
-
+        input = [self.listen]
+        socket_client = {}
         while True:
-            self.listening()
-            ready2 = select.select([self.client], [], [], 0.1)
-
-            if ready2[0]:
-                header, url = self.get_header()
-                self.forward.sendall(header.encode())
-                print("datasent:")
-                print(header.encode())
-            ready1 = select.select([self.forward], [], [], 0.1)
-            if ready1[0]:
-                data_rec = self.recvall(self.forward)
-                if data_rec:
-                    self.client.sendall(data_rec)
-                    print("datarec:")
-                    print(data_rec)
+            read, write, exce = select.select(input, [], [])
+            for connection in read:
+                if connection is self.listen:
+                    print("once")
+                    self.listening()
+                    self.client.setblocking(0)
+                    input.append(self.client)
+                    socket_client[self.client] = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    self.connect(socket_client[self.client])
                 else:
-                    self.disconnect_all()
+                    request = connection.recv(8192)
+                    print(request)
+                    if request != '':
+                        header, website = self.modify_request(request)
+                        socket_client[connection].sendall(header)
+
+                        data_rec = self.recvall(socket_client[connection])
+                        connection.sendall(data_rec)
+                        print("wat")
+                    else:
+                        print("bad")
+                        input.remove(connection)
+                        socket_client[connection].close()
+                        del socket_client[connection]
+
 
     def recvall(self, socket):
         socket.setblocking(0)
@@ -66,29 +72,25 @@ class ProxyServer:
             except:pass
         return total_data
 
-    def get_header(self):
-        header = ''
-        while True:
-            header += self.client.recv(8192).decode()
-            i_0 = header.find('HTTP')
-            if i_0 > 0: break
-        path = header[4:i_0-1]
-        if not self.url:
-            url = path.split('/', 2)[1]
-            self.url = url
-        else:
-            url = self.url
+    def modify_request(self, request):
+        decode = request.decode()
+        index = decode.find('HTTP')
+        website = decode[5:index - 1]
 
-        path = path.replace("/" + url, "")
-        if path == "":
-            path = "/"
-        header = header.replace(header[4:i_0-1], path)
-        print(path)
-        print(url)
-        i_1 = header.find('Host: ')
-        i_2 = header.find('\r\nConnection:')
-        header = header.replace(header[i_1+6:i_2], url)
-        return header, url
+        index_slash = website.find('/')
+        if index_slash == -1:
+            decode = decode[:5] + website + '/' + decode[index - 1:]
+        else:
+            path = website[index_slash + 1:]
+            website = website[:index_slash]
+            decode = decode[:5] + path + decode[index - 1:]
+
+        index_head = decode.find('Host:')
+        index_tail = decode.find('\r\nConnection')
+        decode = decode[:index_head + 6] + website + decode[index_tail:]
+
+        request = decode.encode()
+        return request, website
 
     def test_get(self):
         self.client, addr = self.listen.accept()
@@ -103,4 +105,3 @@ class ProxyServer:
 
 if __name__ == '__main__':
     ProxyServer(('localhost', 8888)).fwd()
-
