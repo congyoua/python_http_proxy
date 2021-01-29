@@ -22,6 +22,9 @@ class ProxyServer:
                     pass
             except:pass
         header, website = self.modify_request(request)
+        if website == 'favicon.ico':
+            forward.close()
+            return False
         print('\n', request, '\n')
         print(header, '\n')
         print(website, '\n')
@@ -29,6 +32,7 @@ class ProxyServer:
         forward.sendall(header)
         data_rec = self.recvall(forward)
         self.client.sendall(data_rec)
+        return True
 
     def disconnect_all(self):
         self.listen.close()
@@ -48,7 +52,9 @@ class ProxyServer:
                     self.client.setblocking(0)
                     input.append(self.client)
                     socket_client[self.client] = [socket.socket(socket.AF_INET, socket.SOCK_STREAM)]
-                    self.connect(socket_client[self.client][0])
+                    if not self.connect(socket_client[self.client][0]):
+                        input.remove(self.client)
+                        del socket_client[self.client]
                 else:
                     request = connection.recv(8192)
                     print(request)
