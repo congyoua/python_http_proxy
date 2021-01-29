@@ -16,9 +16,15 @@ class ProxyServer:
         while True:
             try:
                 request = self.client.recv(8192)
-                break
+                if request != b'':
+                    break
+                else:
+                    pass
             except:pass
         header, website = self.modify_request(request)
+        print('\n', request, '\n')
+        print(header, '\n')
+        print(website, '\n')
         forward.connect((website, 80))
         forward.sendall(header)
         data_rec = self.recvall(forward)
@@ -29,33 +35,36 @@ class ProxyServer:
 
     def fwd(self):
         input = [self.listen]
+        output = []
         socket_client = {}
         while True:
             print("hi")
-            read, write, exce = select.select(input, [], [])
+            read, write, exce = select.select(input, output, [])
             print("bad")
-            print(read)
             for connection in read:
                 if connection is self.listen:
                     print("once")
                     self.listening()
                     self.client.setblocking(0)
                     input.append(self.client)
-                    socket_client[self.client] = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                    self.connect(socket_client[self.client])
+                    socket_client[self.client] = [socket.socket(socket.AF_INET, socket.SOCK_STREAM)]
+                    self.connect(socket_client[self.client][0])
                 else:
                     request = connection.recv(8192)
                     print(request)
                     header, website = self.modify_request(request)
-                    socket_client[connection].sendall(header)
+                    socket_client[connection][0].sendall(header)
                     print("send")
-                    data_rec = self.recvall(socket_client[connection])
-                    connection.sendall(data_rec)
-                    print("wat")
+                    data_rec = self.recvall(socket_client[connection][0])
+                    socket_client[connection].append(data_rec)
+                    output.append(connection)
                     input.remove(connection)
-                    socket_client[connection].close()
-                    del socket_client[connection]
-
+            for connection in write:
+                connection.sendall(socket_client[connection][1])
+                print("wat")
+                output.remove(connection)
+                socket_client[connection][0].close()
+                del socket_client[connection]
 
 
     def recvall(self, socket):
