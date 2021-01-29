@@ -31,7 +31,10 @@ class ProxyServer:
         input = [self.listen]
         socket_client = {}
         while True:
+            print("hi")
             read, write, exce = select.select(input, [], [])
+            print("bad")
+            print(read)
             for connection in read:
                 if connection is self.listen:
                     print("once")
@@ -43,18 +46,16 @@ class ProxyServer:
                 else:
                     request = connection.recv(8192)
                     print(request)
-                    if request != b'':
-                        header, website = self.modify_request(request)
-                        socket_client[connection].sendall(header)
-                        print("send")
-                        data_rec = self.recvall(socket_client[connection])
-                        connection.sendall(data_rec)
-                        print("wat")
-                    else:
-                        print("bad")
-                        input.remove(connection)
-                        socket_client[connection].close()
-                        del socket_client[connection]
+                    header, website = self.modify_request(request)
+                    socket_client[connection].sendall(header)
+                    print("send")
+                    data_rec = self.recvall(socket_client[connection])
+                    connection.sendall(data_rec)
+                    print("wat")
+                    input.remove(connection)
+                    socket_client[connection].close()
+                    del socket_client[connection]
+
 
 
     def recvall(self, socket):
