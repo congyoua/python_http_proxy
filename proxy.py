@@ -4,7 +4,7 @@ class ProxyServer:
     def __init__(self, addr):
         self.listen = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.listen.bind(addr)
-        self.listen.listen(5)
+        self.listen.listen(10)
         self.time_limit = float(sys.argv[1])
 
     def connect(self, client, forward):
@@ -21,7 +21,7 @@ class ProxyServer:
             forward.close()
             return False
         forward.connect((website, 80))
-        data_rec = self.cache(header, forward, path)
+        data_rec = self.cache(header, forward, website, path)
         client.sendall(data_rec)
         return True
 
@@ -63,7 +63,7 @@ class ProxyServer:
                         connection.close()
                         del socket_client[connection]
                         continue
-                    data_rec = self.cache(header, socket_client[connection][0], path)
+                    data_rec = self.cache(header, socket_client[connection][0], website, path)
                     socket_client[connection].append(data_rec)
                     output.append(connection)
                     input.remove(connection)
@@ -96,27 +96,37 @@ class ProxyServer:
         decode = request.decode()
         index = decode.find('HTTP')
         website = decode[5:index - 1]
-
         index_slash = website.find('/')
         if index_slash == -1:
-            decode = decode[:5] + website + '/' + decode[index - 1:]
+            decode = decode[:5] + decode[index - 1:]
         else:
             path = website[index_slash + 1:]
             website = website[:index_slash]
             decode = decode[:5] + path + decode[index - 1:]
+        if not path:
+            path = "/"
 
         index_head = decode.find('Host:')
         index_tail = decode.find('\r\nConnection')
         decode = decode[:index_head + 6] + website + decode[index_tail:]
+
+        index_head = decode.find('Accept-Encoding: ')
+        index_tail = decode.find('\r\nAccept-Language:')
+        decode = decode[:index_head + 17] + decode[index_tail:]
+
         request = decode.encode()
+        print("request:")
+        print(request)
         return request, website, path
 
-    def cache(self, header, sock, path):
-        print(path)
-        file_path = "./cache/" + path.replace("/", "%")
+    def cache(self, header, sock, website, path):
+        file_path = "./cache/" + website + path.replace("/", "%")
+        print(("path is!!!!!!!!!", path))
         if os.path.exists(file_path) and time.time() - os.path.getmtime(file_path) < self.time_limit:
             cache_file = open(file_path, "rb")
             data = cache_file.read()
+            if path[-5:] == '.html' or path[-1:] == '/':
+                data = self.modify_html(data, os.path.getmtime(file_path))
             print("data loaded")
         else:
             print("cache not found")
@@ -125,9 +135,35 @@ class ProxyServer:
             data = self.recvall(sock)
             cache_file = open(file_path, "wb+")
             cache_file.write(data)
+            if path[-5:] == '.html' or path[-1:] == '/':
+                data = self.modify_html(data, -1)
             print("cache saved")
         cache_file.close()
         return data
+
+    def modify_html(self, data, cachetime):
+
+        index = data.find(b'<html>')
+        if index != -1:
+            if cachetime == -1:
+                timestamp = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time()))
+                print("timestamp")
+                print(timestamp)
+                label = "FRESH VERSION AT" + str(timestamp)
+            else:
+                cachetime = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(cachetime))
+                print("timestamp")
+                print(cachetime)
+                label = "CACHED VERSION AS OF" + str(cachetime)
+            label = "<p style=\"z-index:9999; position:fixed; top:20px; left:20px; width:200px; height:100px; " \
+                    "background-color:yellow; padding:10px; font-weight:bold;\">" + label + "</p>"
+            data = data[:index+6] + label.encode() + data[index+7:]
+            print("data MOOOOOOOOOOOOOOO!")
+            return data
+
+
+
+
 
 if __name__ == '__main__':
     ProxyServer(('localhost', 8888)).fwd()
