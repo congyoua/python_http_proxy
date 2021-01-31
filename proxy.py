@@ -121,11 +121,12 @@ class ProxyServer:
 
     def cache(self, header, sock, website, path):
         file_path = "./cache/" + website + path.replace("/", "%")
-        print(("path is!!!!!!!!!", path))
+        print(("path is!!!!!!!!!", path[-1:]))
         if os.path.exists(file_path) and time.time() - os.path.getmtime(file_path) < self.time_limit:
             cache_file = open(file_path, "rb")
             data = cache_file.read()
             if path[-5:] == '.html' or path[-1:] == '/':
+                print("need modify!")
                 data = self.modify_html(data, os.path.getmtime(file_path))
             print("data loaded")
         else:
@@ -136,6 +137,7 @@ class ProxyServer:
             cache_file = open(file_path, "wb+")
             cache_file.write(data)
             if path[-5:] == '.html' or path[-1:] == '/':
+                print("need modify!")
                 data = self.modify_html(data, -1)
             print("cache saved")
         cache_file.close()
@@ -143,8 +145,9 @@ class ProxyServer:
 
     def modify_html(self, data, cachetime):
 
-        index = data.find(b'<html>')
+        index = data.find(b'<html')
         if index != -1:
+            index = index + data[index:].find(b'>')
             if cachetime == -1:
                 timestamp = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time()))
                 print("timestamp")
@@ -157,11 +160,9 @@ class ProxyServer:
                 label = "CACHED VERSION AS OF" + str(cachetime)
             label = "<p style=\"z-index:9999; position:fixed; top:20px; left:20px; width:200px; height:100px; " \
                     "background-color:yellow; padding:10px; font-weight:bold;\">" + label + "</p>"
-            data = data[:index+6] + label.encode() + data[index+7:]
+            data = data[:index+1] + label.encode() + data[index+1:]
             print("data MOOOOOOOOOOOOOOO!")
-            return data
-
-
+        return data
 
 
 
