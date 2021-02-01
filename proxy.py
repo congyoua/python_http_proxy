@@ -2,12 +2,26 @@ import sys, os, time, socket, select
 
 class ProxyServer:
     def __init__(self, addr):
+        """
+        initialization function
+
+        adr: Set the address and port of the proxy server
+        """
         self.listen = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.listen.bind(addr)
         self.listen.listen(10)
         self.time_limit = float(sys.argv[1])
 
     def connect(self, client, forward):
+        """
+        Receive&modify GET request from the client(browser) socket
+        and connect the forward socket to the destination server
+        Pull the information from the destination server and send it back to
+        the client
+
+        client:
+        adr: Set the address and port of the proxy server
+        """
         while True:
             try:
                 request = client.recv(8192)
@@ -51,7 +65,7 @@ class ProxyServer:
                             del socket_client[connection]
                         continue
                     request = connection.recv(8192)
-                    if request == b'':
+                    if request == 0 or request == b'':
                         input.remove(connection)
                         connection.close()
                         del socket_client[connection]
@@ -72,7 +86,6 @@ class ProxyServer:
                 output.remove(connection)
                 socket_client[connection][0].close()
                 del socket_client[connection]
-
 
     def recvall(self, socket):
         socket.setblocking(0)
@@ -163,7 +176,6 @@ class ProxyServer:
             data = data[:index+1] + label.encode() + data[index+1:]
             print("data MOOOOOOOOOOOOOOO!")
         return data
-
 
 
 if __name__ == '__main__':
