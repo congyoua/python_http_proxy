@@ -4,7 +4,8 @@ import sys, os, time, socket, select
 Our code only runs on Google Chrome, Firefox keeps sending empty request for some reasons
 
 Please test each website separately by either restart program or reopen browser
-It can run many websites at the same time but if you run it one by one, the second pages will stuck sometimes
+It can run many websites at the same time but if you run it one by one, after some certain time limit
+the browser may stop sending request for the second/third pages
 """
 
 class ProxyServer:
