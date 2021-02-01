@@ -6,6 +6,7 @@ class ProxyServer:
         self.listen.bind(addr)
         self.listen.listen(10)
         self.time_limit = float(sys.argv[1])
+        self.addr = addr
 
     def connect(self, client, forward):
         while True:
@@ -32,13 +33,15 @@ class ProxyServer:
         while True:
             print("hi")
             print(input)
-            read, write, exce = select.select(input, output, [], 20)
-            if read == [] and write == []:
-                for i in input:
-                    if not i is self.listen:
-                        socket_client[i][0].close()
-                        del socket_client[i]
+            read, write, exce = select.select(input, output, [], 5)
+            if not (read or write or exce):
+                self.listen.close()
+                self.listen = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                self.listen.bind(self.addr)
+                self.listen.listen(10)
                 input = [self.listen]
+                output = []
+                socket_client = {}
                 continue
             print(read)
             for connection in read:
