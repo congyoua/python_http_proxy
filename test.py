@@ -1,81 +1,82 @@
 import sys, os, time, socket, select
 
-
 class ProxyServer:
     def __init__(self, addr):
         self.listen = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.listen.bind(addr)
-        self.listen.listen(5)
-        self.client = None
+        self.listen.listen(10)
+        self.time_limit = float(sys.argv[1])
 
-    def listening(self):
-        self.client, addr = self.listen.accept()
-        print('listening to {} with {}'.format(self.client, addr))
-
-    def connect(self, forward):
+    def connect(self, client, forward):
         while True:
             try:
-                request = self.client.recv(8192)
+                request = client.recv(8192)
                 if request != b'':
                     break
                 else:
                     pass
             except:pass
-        header, website = self.modify_request(request)
+        header, website, path = self.modify_request(request)
         if website == 'favicon.ico':
-            forward.close()
-            return False
-        print('\n', request, '\n')
-        print(header, '\n')
-        print(website, '\n')
+            return
         forward.connect((website, 80))
-        forward.sendall(header)
-        data_rec = self.recvall(forward)
-        self.client.sendall(data_rec)
-        return True
-
-    def disconnect_all(self):
-        self.listen.close()
+        data_rec = self.cache(header, forward, website, path)
+        client.sendall(data_rec)
 
     def fwd(self):
         input = [self.listen]
         output = []
         socket_client = {}
+        if not os.path.exists("./cache"):
+            os.mkdir("cache")
         while True:
             print("hi")
-            read, write, exce = select.select(input, output, [])
-            print("bad")
+            print(input)
+            read, write, exce = select.select(input, output, [], 20)
+            if read == [] and write == []:
+                for i in input:
+                    if not i is self.listen:
+                        socket_client[i][0].close()
+                        del socket_client[i]
+                input = [self.listen]
+                continue
+            print(read)
             for connection in read:
                 if connection is self.listen:
-                    print("once")
-                    self.listening()
-                    self.client.setblocking(0)
-                    input.append(self.client)
-                    socket_client[self.client] = [socket.socket(socket.AF_INET, socket.SOCK_STREAM)]
-                    if not self.connect(socket_client[self.client][0]):
-                        input.remove(self.client)
-                        del socket_client[self.client]
+                    print("server")
+                    client, addr = self.listen.accept()
+                    client.setblocking(0)
+                    input.append(client)
+                    socket_client[client] = [socket.socket(socket.AF_INET, socket.SOCK_STREAM), 0]
                 else:
+                    print("client")
+                    if socket_client[connection][1] == 0:
+                        socket_client[connection][1] = 1
+                        print("connecting")
+                        self.connect(connection, socket_client[connection][0])
+                        continue
                     request = connection.recv(8192)
+                    if request == b'':
+                        input.remove(connection)
+                        connection.close()
+                        del socket_client[connection]
+                        continue
                     print(request)
-                    header, website = self.modify_request(request)
-                    socket_client[connection][0].sendall(header)
-                    print("send")
-                    data_rec = self.recvall(socket_client[connection][0])
+                    header, website, path = self.modify_request(request)
+                    data_rec = self.cache(header, socket_client[connection][0], website, path)
                     socket_client[connection].append(data_rec)
                     output.append(connection)
                     input.remove(connection)
             for connection in write:
-                connection.sendall(socket_client[connection][1])
-                print("wat")
+                connection.sendall(socket_client[connection][2])
                 output.remove(connection)
-                socket_client[connection][0].close()
-                del socket_client[connection]
-
+                input.append(connection)
+                #socket_client[connection][0].close()
+                #del socket_client[connection]
 
     def recvall(self, socket):
         socket.setblocking(0)
-        total_data = b'';
+        total_data = b''
         begin = time.time()
         while True:
             try:
@@ -84,7 +85,6 @@ class ProxyServer:
                 data = socket.recv(8192)
                 if data and data != b'':
                     total_data += data
-                    begin = time.time()
                 begin = time.time()
                 if data == b'':
                     break
@@ -92,34 +92,76 @@ class ProxyServer:
         return total_data
 
     def modify_request(self, request):
+        path = None
         decode = request.decode()
         index = decode.find('HTTP')
         website = decode[5:index - 1]
-
         index_slash = website.find('/')
         if index_slash == -1:
-            decode = decode[:5] + website + '/' + decode[index - 1:]
+            decode = decode[:5] + decode[index - 1:]
         else:
             path = website[index_slash + 1:]
             website = website[:index_slash]
             decode = decode[:5] + path + decode[index - 1:]
+        if not path:
+            path = "/"
 
         index_head = decode.find('Host:')
         index_tail = decode.find('\r\nConnection')
         decode = decode[:index_head + 6] + website + decode[index_tail:]
 
-        request = decode.encode()
-        return request, website
+        index_head = decode.find('Accept-Encoding: ')
+        index_tail = decode.find('\r\nAccept-Language:')
+        decode = decode[:index_head + 17] + decode[index_tail:]
 
-    def test_get(self):
-        self.client, addr = self.listen.accept()
-        print('listening to {} with {}'.format(self.client, addr))
-        self.get_header()
-        while True:
-            data_sent = self.client.recv(8192)
-            #print(data_sent)
-            if not data_sent:
-                self.disconnect_all()
+        request = decode.encode()
+        print("request:")
+        print(request)
+        return request, website, path
+
+    def cache(self, header, sock, website, path):
+        file_path = "./cache/" + website + path.replace("/", "%")
+        print(("path is!!!!!!!!!", path))
+        if os.path.exists(file_path) and time.time() - os.path.getmtime(file_path) < self.time_limit:
+            cache_file = open(file_path, "rb")
+            data = cache_file.read()
+            if path[-5:] == '.html' or path[-1:] == '/':
+                data = self.modify_html(data, os.path.getmtime(file_path))
+            print("data loaded")
+        else:
+            print("cache not found")
+            sock.sendall(header)
+            print("send")
+            data = self.recvall(sock)
+            cache_file = open(file_path, "wb+")
+            cache_file.write(data)
+            if path[-5:] == '.html' or path[-1:] == '/':
+                data = self.modify_html(data, -1)
+            print("cache saved")
+        cache_file.close()
+        return data
+
+    def modify_html(self, data, cachetime):
+        index = data.find(b'<html>')
+        if index != -1:
+            if cachetime == -1:
+                timestamp = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time()))
+                print("timestamp")
+                print(timestamp)
+                label = "FRESH VERSION AT" + str(timestamp)
+            else:
+                cachetime = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(cachetime))
+                print("timestamp")
+                print(cachetime)
+                label = "CACHED VERSION AS OF" + str(cachetime)
+            label = "<p style=\"z-index:9999; position:fixed; top:20px; left:20px; width:200px; height:100px; " \
+                    "background-color:yellow; padding:10px; font-weight:bold;\">" + label + "</p>"
+            data = data[:index+6] + label.encode() + data[index+7:]
+            print("data MOOOOOOOOOOOOOOO!")
+        return data
+
+
+
 
 
 if __name__ == '__main__':
